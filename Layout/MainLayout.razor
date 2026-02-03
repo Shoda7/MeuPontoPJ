@@ -1,16 +1,16 @@
 ﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
+
+<main>
+    <div class="content">
+        @Body
     </div>
+</main>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
+<style>
+    /* Remove o menu lateral e a barra de cima padrão do Blazor */
+    .page { display: block !important; }
+    .sidebar { display: none !important; }
+    .top-row { display: none !important; }
+    main { width: 100%; }
+    .content { padding: 0 !important; }
+</style>

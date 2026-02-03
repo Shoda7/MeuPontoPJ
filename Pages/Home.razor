@@ -1,80 +1,230 @@
 ﻿@page "/"
 @inject ILocalStorageService localStorage
+@using System.Timers
+@using System.Text.Json
+
 
 <div class="main-container">
     <header>
         <h1>Meu Ponto PJ</h1>
-        <div class="clock">@DateTime.Now.ToString("HH:mm:ss")</div>
+        <div class="clock">@horaAtual</div>
         <div class="date">@DateTime.Now.ToString("dddd, dd MMMM")</div>
     </header>
 
+    @if (!string.IsNullOrEmpty(mensagemSucesso))
+    {
+        <div class="alert">@mensagemSucesso</div>
+    }
+
+    @if (!string.IsNullOrEmpty(mensagemErro))
+    {
+        <div class="alert-error">
+            <strong>⚠️ Atenção:</strong> @mensagemErro
+        </div>
+    }
+
+    <style>
+        /* Adicione este estilo para o alerta de erro ficar bonito no iPhone */
+        .alert-error {
+            background-color: #fff5f5;
+            color: #c53030;
+            border: 1px solid #feb2b2;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 0.9rem;
+            animation: shake 0.2s ease-in-out 0s 2; /* Um pequeno balanço para chamar atenção */
+        }
+
+        @@keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(5px); }
+            50% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+            100% { transform: translateX(0); }
+        }
+    </style>
     <div class="action-buttons">
         <button class="btn-ponto entrada" @onclick='() => Registrar("Entrada")'>
             <span class="icon">▶</span> ENTRADA
         </button>
-        
         <button class="btn-ponto saida" @onclick='() => Registrar("Saída")'>
             <span class="icon">■</span> SAÍDA
         </button>
     </div>
 
     <section class="historico">
-        <h3>Registros de Hoje</h3>
-        @if (registros.Any(r => r.DataHora.Date == DateTime.Today))
+        <h3>Registros de Hoje <small>(Toque para editar)</small></h3>
+        @foreach (var item in registros.Where(r => r.DataHora.Date == DateTime.Today).OrderByDescending(x => x.DataHora))
         {
-            @foreach (var item in registros.Where(r => r.DataHora.Date == DateTime.Today).OrderByDescending(x => x.DataHora))
-            {
-                <div class="card-ponto @item.Tipo?.ToLower()">
-                    <span>@item.Tipo</span>
-                    <strong>@item.DataHora.ToString("HH:mm")</strong>
-                </div>
-            }
-        }
-        else
-        {
-            <p class="empty-state">Nenhum ponto batido hoje.</p>
+            <div class="card-ponto @item.Tipo?.ToLower()" @onclick="() => SelecionarParaEdicao(item)">
+                <span>@item.Tipo</span>
+                <strong>@item.DataHora.ToString("HH:mm")</strong>
+            </div>
         }
     </section>
+
+    <button class="btn-export" @onclick="ExportarDados">📤 Exportar Relatório JSON</button>
+
+    @if (!string.IsNullOrEmpty(jsonExportado))
+    {
+        <div class="modal-overlay" @onclick="() => jsonExportado = null">
+            <div class="modal-content" @onclick:stopPropagation>
+                <h4>Dados Exportados</h4>
+                <textarea readonly>@jsonExportado</textarea>
+                <button class="btn-save" @onclick="() => jsonExportado = null">Fechar</button>
+            </div>
+        </div>
+    }
+
+    @if (registroEmEdicao != null)
+    {
+        <div class="modal-overlay">
+            <div class="modal-content">
+                <h4>Editar Registro</h4>
+                <input type="time" @bind="horarioEdicao" class="input-time" />
+                <button class="btn-save" @onclick="SalvarEdicao">Salvar Alteração</button>
+                <button class="btn-delete" @onclick="ExcluirRegistro">Excluir Ponto</button>
+                <button class="btn-cancel" @onclick="() => registroEmEdicao = null">Voltar</button>
+            </div>
+        </div>
+    }
 </div>
 
 <style>
-    .main-container { padding: 20px; font-family: sans-serif; max-width: 500px; margin: auto; }
-    header { text-align: center; margin-bottom: 30px; }
-    .clock { font-size: 3rem; font-weight: bold; color: #333; }
-    .date { color: #666; text-transform: capitalize; }
+    .main-container { padding: 20px; font-family: -apple-system, sans-serif; max-width: 500px; margin: auto; }
+    header { text-align: center; margin-bottom: 25px; }
+    .clock { font-size: 3.5rem; font-weight: 800; color: #1a1a1a; letter-spacing: -2px; }
+    .date { color: #8e8e93; text-transform: capitalize; font-size: 1.1rem; }
     
     .action-buttons { display: flex; gap: 15px; margin-bottom: 30px; }
-    .btn-ponto { flex: 1; border: none; padding: 25px; border-radius: 15px; color: white; font-weight: bold; font-size: 1.1rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .btn-ponto { flex: 1; border: none; padding: 25px; border-radius: 20px; color: white; font-weight: bold; font-size: 1.1rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+    .entrada { background: #34c759; }
+    .saida { background: #ff3b30; }
     
-    .entrada { background-color: #28a745; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3); }
-    .saida { background-color: #dc3545; box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3); }
+    .card-ponto { display: flex; justify-content: space-between; padding: 18px; border-radius: 15px; margin-bottom: 10px; background: #f2f2f7; border-left: 6px solid #ccc; cursor: pointer; }
+    .card-ponto.entrada { border-left-color: #34c759; }
+    .card-ponto.saida { border-left-color: #ff3b30; }
+
+    .btn-export { width: 100%; padding: 15px; border-radius: 12px; border: 1px solid #d1d1d6; background: white; color: #007aff; font-weight: 600; margin-top: 20px; cursor: pointer; }
     
-    .card-ponto { display: flex; justify-content: space-between; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #ccc; background: #f8f9fa; }
-    .card-ponto.entrada { border-left-color: #28a745; }
-    .card-ponto.saida { border-left-color: #dc3545; }
-    .empty-state { text-align: center; color: #999; margin-top: 20px; }
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(5px); }
+    .modal-content { background: white; padding: 25px; border-radius: 25px; width: 85%; max-width: 350px; }
+    .input-time { width: 100%; padding: 15px; font-size: 1.5rem; text-align: center; border-radius: 12px; border: 1px solid #d1d1d6; margin-bottom: 15px; }
+    textarea { width: 100%; height: 150px; margin: 10px 0; border-radius: 8px; border: 1px solid #eee; font-family: monospace; font-size: 0.8rem; }
+    .btn-save { width: 100%; padding: 12px; background: #007aff; color: white; border: none; border-radius: 12px; font-weight: 600; margin-bottom: 8px; }
+    .btn-delete { width: 100%; padding: 12px; background: #fff1f0; color: #ff3b30; border: none; border-radius: 12px; font-weight: 600; margin-bottom: 8px; }
+    .btn-cancel { width: 100%; padding: 12px; background: transparent; color: #8e8e93; border: none; font-weight: 600; }
+    .alert { background: #e5f9eb; color: #218838; padding: 12px; border-radius: 12px; text-align: center; margin-bottom: 20px; font-weight: 600; }
 </style>
 
 @code {
     private List<RegistroPonto> registros = new();
+    private string horaAtual = DateTime.Now.ToString("HH:mm:ss");
+
+    private string? jsonExportado;
+    private Timer? timer;
+
+    private RegistroPonto? registroEmEdicao;
+    private DateTime horarioEdicao;
+    private string mensagemErro = ""; 
+    private string mensagemSucesso = "";
+
+    protected override void OnInitialized()
+    {
+        timer = new Timer(1000);
+        timer.Elapsed += (s, e) => {
+            horaAtual = DateTime.Now.ToString("HH:mm:ss");
+            InvokeAsync(StateHasChanged);
+        };
+        timer.Start();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             var salvos = await localStorage.GetItemAsync<List<RegistroPonto>>("meus_pontos");
-            if (salvos != null)
-            {
-                registros = salvos;
-                StateHasChanged(); // Força o Blazor a atualizar a tela com os dados carregados
-            }
+            if (salvos != null) { registros = salvos; StateHasChanged(); }
         }
     }
 
+    
     private async Task Registrar(string tipo)
     {
-        var novo = new RegistroPonto { DataHora = DateTime.Now, Tipo = tipo };
-        registros.Add(novo);
+        try 
+        {
+            mensagemErro = ""; // Limpa erros anteriores
+            
+            // Pega o último registro da lista (o mais recente)
+            var ultimoRegistro = registros.OrderByDescending(r => r.DataHora).FirstOrDefault();
+
+            // Regra de Negócio: Não pode bater duas vezes o mesmo tipo seguidamente
+            if (ultimoRegistro != null && ultimoRegistro.Tipo == tipo)
+            {
+                mensagemErro = $"Você já registrou uma {tipo} por último. Registre uma {(tipo == "Entrada" ? "Saída" : "Entrada")} primeiro.";
+                StateHasChanged();
+                
+                // Limpa o erro após 4 segundos
+                await Task.Delay(4000);
+                mensagemErro = "";
+                return;
+            }
+
+            // Se passar na validação, cria o registro
+            var novo = new RegistroPonto { DataHora = DateTime.Now, Tipo = tipo };
+            registros.Add(novo);
+            
+            await SalvarEAtualizar($"Ponto de {tipo} registrado com sucesso!");
+        }
+        catch (Exception ex)
+        {
+            mensagemErro = "Erro ao processar o ponto.";
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private void SelecionarParaEdicao(RegistroPonto item)
+    {
+        registroEmEdicao = item;
+        horarioEdicao = item.DataHora;
+    }
+
+    private async Task SalvarEdicao()
+    {
+        if (registroEmEdicao != null)
+        {
+            registroEmEdicao.DataHora = registroEmEdicao.DataHora.Date 
+                .AddHours(horarioEdicao.Hour)
+                .AddMinutes(horarioEdicao.Minute);
+            await SalvarEAtualizar("Horário atualizado!");
+            registroEmEdicao = null;
+        }
+    }
+
+    private async Task ExcluirRegistro()
+    {
+        if (registroEmEdicao != null)
+        {
+            registros.Remove(registroEmEdicao);
+            await SalvarEAtualizar("Registro removido!");
+            registroEmEdicao = null;
+        }
+    }
+
+    private async Task ExportarDados()
+    {
+        jsonExportado = JsonSerializer.Serialize(registros, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private async Task SalvarEAtualizar(string msg)
+    {
         await localStorage.SetItemAsync("meus_pontos", registros);
+        mensagemSucesso = msg;
+        StateHasChanged();
+        await Task.Delay(2000);
+        mensagemSucesso = null;
+        StateHasChanged();
     }
 }

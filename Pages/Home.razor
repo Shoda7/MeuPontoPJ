@@ -1,0 +1,80 @@
+﻿@page "/"
+@inject ILocalStorageService localStorage
+
+<div class="main-container">
+    <header>
+        <h1>Meu Ponto PJ</h1>
+        <div class="clock">@DateTime.Now.ToString("HH:mm:ss")</div>
+        <div class="date">@DateTime.Now.ToString("dddd, dd MMMM")</div>
+    </header>
+
+    <div class="action-buttons">
+        <button class="btn-ponto entrada" @onclick='() => Registrar("Entrada")'>
+            <span class="icon">▶</span> ENTRADA
+        </button>
+        
+        <button class="btn-ponto saida" @onclick='() => Registrar("Saída")'>
+            <span class="icon">■</span> SAÍDA
+        </button>
+    </div>
+
+    <section class="historico">
+        <h3>Registros de Hoje</h3>
+        @if (registros.Any(r => r.DataHora.Date == DateTime.Today))
+        {
+            @foreach (var item in registros.Where(r => r.DataHora.Date == DateTime.Today).OrderByDescending(x => x.DataHora))
+            {
+                <div class="card-ponto @item.Tipo?.ToLower()">
+                    <span>@item.Tipo</span>
+                    <strong>@item.DataHora.ToString("HH:mm")</strong>
+                </div>
+            }
+        }
+        else
+        {
+            <p class="empty-state">Nenhum ponto batido hoje.</p>
+        }
+    </section>
+</div>
+
+<style>
+    .main-container { padding: 20px; font-family: sans-serif; max-width: 500px; margin: auto; }
+    header { text-align: center; margin-bottom: 30px; }
+    .clock { font-size: 3rem; font-weight: bold; color: #333; }
+    .date { color: #666; text-transform: capitalize; }
+    
+    .action-buttons { display: flex; gap: 15px; margin-bottom: 30px; }
+    .btn-ponto { flex: 1; border: none; padding: 25px; border-radius: 15px; color: white; font-weight: bold; font-size: 1.1rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    
+    .entrada { background-color: #28a745; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3); }
+    .saida { background-color: #dc3545; box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3); }
+    
+    .card-ponto { display: flex; justify-content: space-between; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #ccc; background: #f8f9fa; }
+    .card-ponto.entrada { border-left-color: #28a745; }
+    .card-ponto.saida { border-left-color: #dc3545; }
+    .empty-state { text-align: center; color: #999; margin-top: 20px; }
+</style>
+
+@code {
+    private List<RegistroPonto> registros = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var salvos = await localStorage.GetItemAsync<List<RegistroPonto>>("meus_pontos");
+            if (salvos != null)
+            {
+                registros = salvos;
+                StateHasChanged(); // Força o Blazor a atualizar a tela com os dados carregados
+            }
+        }
+    }
+
+    private async Task Registrar(string tipo)
+    {
+        var novo = new RegistroPonto { DataHora = DateTime.Now, Tipo = tipo };
+        registros.Add(novo);
+        await localStorage.SetItemAsync("meus_pontos", registros);
+    }
+}
